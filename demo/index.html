@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#e6edef">
+<title>Trạm rửa xe thông minh 3D | WashingParking</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Ctext y=%2724%27 font-size=%2726%27%3E%F0%9F%9A%BF%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
+</head>
+<body>
+<div id="viewport"><div id="loading">Đang dựng mô hình 3D…</div></div>
+
+<header class="topbar">
+  <b class="brand">Washing<span>Parking</span></b>
+  <nav class="views" aria-label="Góc nhìn">
+    <button data-view="overview" class="selected">Tổng quan</button>
+    <button data-view="entrance">Cổng vào</button>
+    <button data-view="hall">Khu rửa</button>
+    <button data-view="lot">Bãi chờ</button>
+    <button data-view="park">Bãi đỗ</button>
+    <button data-view="exit">Cổng ra</button>
+  </nav>
+  <button id="modeBtn" class="link" title="Chuyển giữa mô phỏng và dữ liệu backend">Chế độ: Mô phỏng</button>
+</header>
+
+<div class="chips">
+  <div class="chip"><span>Chờ rửa</span><b><i id="sQueue">0</i>/4</b></div>
+  <div class="chip"><span>Khoang</span><b id="sBays">0/4</b></div>
+  <div class="chip"><span>Bãi chờ</span><b><i id="sLot">0</i>/6</b></div>
+  <div class="chip"><span>Bãi đỗ</span><b><i id="sPark">0</i>/12</b></div>
+  <div class="chip" id="chipExit"><span>Cổng ra</span><b id="sExit">Mở</b></div>
+</div>
+
+<section id="cam" class="cam" hidden aria-live="polite">
+  <div class="camhead"><span><i class="rec"></i>Camera AI · <b id="camWhere">Cổng vào</b></span><span id="camPct">0%</span></div>
+  <div class="camstage" id="camStage"><div id="camGrid" class="camgrid"></div><div id="camCar" class="camcar"></div><div id="camBox" class="cambox"></div><div id="camLine" class="scanline"></div><div id="camPlate" class="camplate"></div></div>
+  <div class="camprog"><i id="camBar"></i></div>
+  <ol id="camSteps" class="camsteps"><li>Phát hiện xe</li><li>Phân loại loại xe</li><li>Đọc biển số</li><li id="camStep4">Khớp tài khoản</li></ol>
+  <div id="camResult" class="camresult"></div>
+</section>
+
+<aside class="panel"><div id="details"></div></aside>
+
+<div class="logbox"><div id="log" aria-live="polite"></div></div>
+
+<footer class="dock">
+  <button id="demo" class="btn primary">▶ Chạy minh họa</button>
+  <button id="addcar" class="btn">＋ Thêm xe</button>
+  <button id="pause" class="btn icon" title="Tạm dừng">Ⅱ</button>
+  <button id="reset" class="btn icon" title="Đặt lại">↺</button>
+  <select id="speed" title="Tốc độ"><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+  <button id="labels" class="btn icon on" title="Hiện / ẩn tên">Aa</button>
+</footer>
+
+<dialog id="spawnDlg">
+  <form method="dialog" id="spawnForm">
+    <h3>Thêm xe vào cổng</h3>
+    <label>Loại xe
+      <select name="type"><option value="CAR">Ô tô</option><option value="TRUCK">Xe tải</option></select>
+    </label>
+    <label>Biển số <input name="plate" required maxlength="14" autocomplete="off"></label>
+    <label>Khách hàng
+      <select name="guest"><option value="0">Đã đăng ký (có app)</option><option value="1">Vãng lai (gói cơ bản)</option></select>
+    </label>
+    <label>Gói đã đặt trước <select name="pkg"></select></label>
+    <label>Dịch vụ
+      <select name="service"><option value="WASH">Rửa xe</option><option value="PARK">Gửi xe</option><option value="WASH_PARK">Rửa + gửi xe</option></select>
+    </label>
+    <label>Số dư ví app
+      <select name="wallet"><option value="500000">Đủ (500.000đ)</option><option value="20000">Thiếu (20.000đ)</option></select>
+    </label>
+    <div class="dlgbtns"><button value="cancel" class="btn" formnovalidate>Hủy</button><button value="ok" class="btn primary" id="spawnOk">Cho xe vào</button></div>
+  </form>
+</dialog>
+
+<div id="toast" role="status"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
