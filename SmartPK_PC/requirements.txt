@@ -1,0 +1,7 @@
+# Thu vien de CHAY chuong trinh (pc_ai_camera.py) - phien ban da kiem thu.
+# Python 3.9 den 3.12; Windows, Linux, macOS. Cai bang 1_cai_dat.bat hoac ./1_cai_dat.sh
+numpy==2.0.2
+opencv-python==5.0.0.93
+onnxruntime==1.19.2
+rapidocr-onnxruntime==1.4.4
+pyserial==3.5

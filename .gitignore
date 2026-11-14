@@ -1,3 +1,13 @@
 /.playwright-mcp
 /docs
 /idea
+.venv/
+__pycache__/
+*.db.bak
+runs/
+SmartPK_PC/station.json
+SmartPK_PC/parking.db
+SmartPK_PC/plates/
+*.onnx
+*.pt
+SmartPK_PC/inspections/

@@ -1,0 +1,65 @@
+SMARTPK – CHẠY AI TRÊN MÁY TÍNH (webcam + ESP32-S3 cắm USB vào PC)
+====================================================================
+1. CÀI (1 lần): cần Python 3.9 đến 3.12 (lúc cài nhớ tick "Add Python to PATH"). Xem thêm README.txt
+   Chạy python run.py --setup: tạo môi trường riêng .venv và cài đúng phiên bản trong requirements.txt
+   Muốn huấn luyện: bấm đúp thêm 3_cai_dat_huan_luyen.bat (PyTorch bản GPU hoặc CPU tự chọn + Ultralytics)
+   Các lệnh "python xxx.py" trong tệp này chạy bằng: python run.py xxx.py (mọi hệ điều hành)
+   Đã có slots.json / nền bãi trống của bản PC cũ → chép đè vào thư mục này để giữ 4 ô đã vẽ.
+
+2. CHẠY: cắm webcam + ESP32-S3 vào PC → chạy python run.py
+   - Tự tìm cổng COM của ESP32 và camera ngoài. Sai thì chạy tay:
+       python run.py --cam 1 --port COM7
+   - Đóng Arduino IDE / Serial Monitor trước (chiếm cổng COM).
+   - Mở trình duyệt: http://localhost:8000  (trang 3D + biển số + kéo thả)
+                     http://localhost:8000/ai (vẽ 4 ô, chụp nền)
+
+3. BIỂN SỐ XE + CHỦ XE (mục "Biển số xe & chủ xe" trên trang 3D)
+   - Lần đầu bấm "Khoanh vùng biển số" → kéo khung quanh chỗ xe dừng trước cổng vào → Lưu vùng.
+   - Đăng ký: nhập Biển số (vd 51F-123.45) + Họ tên (+ SĐT, ghi chú) → Lưu chủ xe.
+     Gặp XE LẠ → bấm "+ Đăng ký biển này". Sửa / Xoá ngay trong bảng.
+   - "Đọc biển ngay" / "Tự đọc biển: BẬT/TẮT". Thả ẢNH vào trang cũng đọc biển + tra chủ xe.
+   - Dữ liệu: parking.db (chủ xe + nhật ký) và thư mục plates\ (ảnh biển) nằm cạnh pc_ai_camera.py.
+     Sao lưu = chép file parking.db.
+   - Chỉ nhận diện + ghi nhật ký, KHÔNG tự mở cổng.
+   - Biển phải rõ, đủ sáng, chữ cao ≥ ~20 px trên hình camera; camera nhìn thẳng vào biển.
+
+3a. CHỈ BẮT XE CÓ TRONG DATASET, XE KHÁC KHÔNG BẮT (v12)
+   Nguyên nhân: xe_best.onnx chỉ học các xe đã chụp lúc train; xe khác hình dạng / màu → YOLO không chắc
+   → bộ lọc 45% (v11) bỏ qua.
+   CÁCH NHANH (không train lại) – http://localhost:8000/ai → tab Nhận diện:
+     - Chế độ: "YOLO + so sánh nền"; bấm "Chụp nền bãi trống" khi bãi KHÔNG có xe
+     - Mục "Xe chưa có trong dataset": kéo "Độ nhạy xe chưa học" xuống 5–8%
+     - Vẫn chưa bắt → tick "Tính cả xe chưa học" (vật so nền thấy, nằm trong ô, kích thước/hình dạng
+       giống xe → tính là xe; tay/giấy/que vẫn bị loại vì quá nhỏ / hình dạng lạ)
+   CÁCH GỐC (model bắt được mọi xe):
+     - Tab Train → "🚗 Chụp xe MỚI (tự gán nhãn)": đặt từng xe chưa học vào các ô, đổi hướng, đổi ô,
+       mỗi xe 20–40 ảnh (khung lấy từ so sánh nền – cần ảnh nền). Mở /label kiểm tra khung.
+     - Thêm vài chục ảnh xe cũ + 10–30 ảnh "🚫 KHÔNG có xe" để model không quên / không nhầm.
+     - python train_xe.py  →  đổi ONNX:
+       python -c "from ultralytics import YOLO; YOLO('xe_best.pt').export(format='onnx', imgsz=320, opset=12, simplify=True)"
+     - Chạy lại python run.py (hoặc kéo thả xe_best.onnx vào trang 3D).
+
+3b. BẮT NHẦM VẬT KHÔNG PHẢI XE
+   - http://localhost:8000/ai → tab Nhận diện → "Lọc vật không phải xe":
+       ngưỡng tin cậy (mặc định 45%, nhầm nhiều thì kéo lên 55–65%)
+       + tick "Loại khung nằm lệch ô / quá nhỏ / quá to / hình dạng lạ". Khung bị loại: màu XÁM + lý do.
+   - Dùng chế độ "YOLO + so sánh nền" hoặc "Chỉ YOLO". KHÔNG dùng "Chỉ so sánh nền" (vật gì cũng thành xe).
+   - Dạy model hết nhầm: đặt tay, hộp, giấy, điện thoại… vào ô → tab Train → "🚫 Chụp ảnh KHÔNG có xe"
+     (10–30 ảnh, nhiều vật khác nhau) + chụp thêm ảnh có xe → python train_xe.py → đổi ONNX:
+       python -c "from ultralytics import YOLO; YOLO('xe_best.pt').export(format='onnx', imgsz=320, opset=12, simplify=True)"
+
+3c. YOLO BẮT BIỂN SỐ (bien_so.onnx)
+   - ĐÃ CÓ SẴN bien_so.onnx (train từ 100 biển PDF 20×10 mm) – xem TRAIN_BIEN_SO_NHANH.txt
+   - Có bien_so.onnx cạnh pc_ai_camera.py → YOLO tìm khung biển → đọc chữ trong khung (~0,2 s/lần,
+     thay vì ~2 s khi OCR cả vùng). Chưa có file → chạy như cũ (OCR cả vùng).
+   - Dữ liệu tự gom: mỗi lần đọc chắc chắn 1 biển (camera / ảnh kéo thả) → thư mục dataset_bien_so   - Train (cần PyTorch: pip install ultralytics):
+       python train_bien_so.py                          dùng ảnh tự gom
+       python train_bien_so.py --them D:ien_vn        thêm bộ ảnh tải về (định dạng YOLOv8)
+     → ra bien_so.onnx cạnh code → chạy lại (hoặc kéo thả bien_so.onnx vào trang 3D).
+   - Nên có ≥ 300 ảnh biển, đúng góc camera thật.
+
+4. LỖI HAY GẶP
+   - "Không mở được camera": thử --cam 0 / --cam 1, tắt app khác đang dùng webcam (Zoom, Camera).
+   - "OCR chưa sẵn sàng": chạy lại python run.py --setup (thiếu rapidocr_onnxruntime).
+   - ESP32 không nhận: kiểm tra cổng COM trong Device Manager, dùng --port COMx.
+   - Muốn dùng model .pt bằng PyTorch (PC chạy được): python pc_ai_camera.py --engine torch
