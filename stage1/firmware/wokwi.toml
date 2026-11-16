@@ -1,0 +1,8 @@
+# Wokwi for VS Code: MÔ PHỎNG, chưa kiểm trên phần cứng.
+# Build trước: pio run -e wokwi   (Wokwi không tự biên dịch; build lại thì mô phỏng tự nạp bản mới)
+[wokwi]
+version = 1
+firmware = '.pio/build/wokwi/firmware.bin'
+elf = '.pio/build/wokwi/firmware.elf'
+# Serial của ESP mô phỏng ra cổng TCP để đọc log từ terminal (rfc2217://localhost:4000)
+rfc2217ServerPort = 4000

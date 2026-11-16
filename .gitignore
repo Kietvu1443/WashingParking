@@ -11,3 +11,6 @@ SmartPK_PC/plates/
 *.onnx
 *.pt
 SmartPK_PC/inspections/
+stage1/server/stage1.db
+stage1/firmware/.pio/
+stage1/firmware/src/secrets.h
