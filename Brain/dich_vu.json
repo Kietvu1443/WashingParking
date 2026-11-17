@@ -1,0 +1,5 @@
+{
+  "kinh_vo":  {"name": "Thay / dán lại kính",        "price": 1500000, "priority": 1, "min_conf": 0.5},
+  "mop_than": {"name": "Gò hàn, sơn lại thân xe",    "price": 2500000, "priority": 2, "min_conf": 0.5},
+  "lop_hong": {"name": "Thay / vá lốp",              "price": 900000,  "priority": 1, "min_conf": 0.5}
+}

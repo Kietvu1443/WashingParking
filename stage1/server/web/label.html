@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chụp bộ bẩn/sạch</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --ink:#1d2330; --muted:#6b7280; --line:#e3e6eb; --accent:#1f6feb;
+          --ok:#1a7f37; --warn:#b26b00; --bad:#c62828; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui, "Segoe UI", Roboto, sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; padding:12px 16px; background:var(--card); border-bottom:1px solid var(--line); }
+  header h1 { font-size:18px; margin:0 auto 0 0; }
+  main { max-width:1100px; margin:0 auto; padding:16px; display:grid; gap:16px; grid-template-columns:minmax(0,3fr) minmax(0,2fr); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; }
+  h2 { font-size:16px; margin:0 0 10px; }
+  #preview { width:100%; aspect-ratio:16/9; object-fit:contain; background:#111; border-radius:8px; display:block; }
+  #noimg { color:var(--bad); font-size:13px; min-height:1.4em; margin-top:6px; }
+  .big { display:flex; gap:10px; margin-top:12px; }
+  .big button { flex:1; font:inherit; font-size:20px; font-weight:700; padding:18px; border-radius:10px; border:none; color:#fff; cursor:pointer; }
+  .dirty { background:var(--warn); } .clean { background:var(--ok); }
+  button.b, a.b { font:inherit; padding:8px 14px; border-radius:6px; border:1px solid var(--line); background:#fff; cursor:pointer; color:inherit; text-decoration:none; display:inline-block; }
+  button:disabled { opacity:.5; cursor:default; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:8px 0; }
+  .muted { color:var(--muted); font-size:13px; }
+  .msg { min-height:1.4em; font-size:14px; } .msg.err { color:var(--bad); } .msg.ok { color:var(--ok); }
+  code { background:#eef1f5; padding:1px 5px; border-radius:4px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; }
+  th, td { text-align:left; padding:5px 6px; border-bottom:1px solid var(--line); }
+  .warn { color:var(--warn); font-size:13px; margin:4px 0; }
+  .yes { color:var(--ok); font-weight:600; } .no { color:var(--bad); font-weight:600; }
+  @media (max-width:760px) { main { grid-template-columns:1fr; padding:10px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Chụp bộ bẩn/sạch (dataset_dirt)</h1>
+  <a class="b" href="/">← Trang chính</a>
+</header>
+<main>
+  <section class="card">
+    <h2>Camera kiểm tra (cam2)</h2>
+    <img id="preview" alt="Khung hình camera">
+    <div id="noimg"></div>
+    <div class="big">
+      <button class="dirty" data-cls="dirty">BẨN</button>
+      <button class="clean" data-cls="clean">SẠCH</button>
+    </div>
+    <div id="msg" class="msg"></div>
+    <p class="muted">Mỗi nút chụp khung hiện tại và gán nhãn luôn. Chỉ gán nhãn bằng mắt — ảnh ở đây không lẫn với ảnh tự lưu của /cam2.</p>
+  </section>
+
+  <section class="card">
+    <h2>Phiên</h2>
+    <div class="row">Phiên: <code id="sess">…</code> <button class="b" id="newSess">Phiên mới</button></div>
+    <div class="row">Ảnh tham chiếu của phiên: <span id="ref">…</span></div>
+    <div class="row"><button class="b" id="refBtn">Chụp ảnh tham chiếu (SẠCH)</button></div>
+    <p class="muted">Đổi ánh sáng / vị trí camera → bấm Phiên mới rồi chụp lại ảnh tham chiếu (xe sạch, đỗ đúng chỗ).</p>
+    <table>
+      <tr><th></th><th>BẨN</th><th>SẠCH</th></tr>
+      <tr><td>Phiên này</td><td id="sd">0</td><td id="sc">0</td></tr>
+      <tr><td>Tổng</td><td id="td">0</td><td id="tc">0</td></tr>
+    </table>
+    <div class="row"><button class="b" id="undo">Xoá ảnh vừa chụp</button>
+      <a class="b" href="/label/dataset_dirt.zip" download>Tải zip</a></div>
+  </section>
+
+  <section class="card" style="grid-column:1/-1">
+    <h2>Đánh giá luật bụi (thô, không phải mô hình)</h2>
+    <div class="row"><button class="b" id="evalBtn">Đánh giá</button></div>
+    <div id="eval" class="muted">Chưa chạy.</div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let session = null;
+try { session = localStorage.getItem("wp_label_session"); } catch (e) {}
+
+function say(text, ok) { $("msg").textContent = text; $("msg").className = "msg " + (ok ? "ok" : "err"); }
+
+async function api(method, path) {
+  const r = await fetch(path, { method });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof body.detail === "string" ? body.detail : `lỗi ${r.status}`);
+  return body;
+}
+
+function showCounts(c) {
+  $("td").textContent = c.total.dirty; $("tc").textContent = c.total.clean;
+  if (c.session) { $("sd").textContent = c.session.dirty; $("sc").textContent = c.session.clean; }
+  if ("reference" in c) {
+    $("ref").textContent = c.reference ? "đã có" : "chưa có";
+    $("ref").className = c.reference ? "yes" : "no";
+  }
+}
+
+async function refresh() { showCounts(await api("GET", `/label/counts?session=${encodeURIComponent(session)}`)); }
+
+async function newSession() {
+  session = (await api("POST", "/label/session")).session;
+  try { localStorage.setItem("wp_label_session", session); } catch (e) {}
+  $("sess").textContent = session;
+  await refresh();
+}
+
+document.querySelectorAll("[data-cls]").forEach(b => b.onclick = async () => {
+  const cls = b.dataset.cls, name = cls === "dirty" ? "BẨN" : "SẠCH";
+  document.querySelectorAll("[data-cls]").forEach(x => x.disabled = true);
+  try {
+    const r = await api("POST", `/label/capture?cls=${cls}&session=${encodeURIComponent(session)}`);
+    showCounts(r); say(`Đã lưu ${name} (${r.id})`, true);
+  } catch (e) { say(`Không lưu được: ${e.message}`); }
+  document.querySelectorAll("[data-cls]").forEach(x => x.disabled = false);
+});
+
+$("undo").onclick = async () => {
+  try { const r = await api("POST", `/label/delete_last?session=${encodeURIComponent(session)}`);
+        showCounts(r); say(`Đã xoá ${r.deleted} (vào _deleted/)`, true); }
+  catch (e) { say(e.message); }
+};
+$("newSess").onclick = () => newSession().then(() => say("Đã tạo phiên mới", true), e => say(e.message));
+$("refBtn").onclick = async () => {
+  try { await api("POST", `/label/reference?session=${encodeURIComponent(session)}`);
+        await refresh(); say("Đã lưu ảnh tham chiếu cho phiên này", true); }
+  catch (e) { say(`Không lưu được ảnh tham chiếu: ${e.message}`); }
+};
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function pr(m) {
+  if (!m) return "<td colspan=4>—</td>";
+  const f = v => v === null ? "—" : v;
+  return `<td>${m.threshold}</td><td>${f(m.precision)}</td><td>${f(m.recall)}</td>` +
+         `<td>TP ${m.tp} · FP ${m.fp} · FN ${m.fn} · TN ${m.tn}</td>`;
+}
+function stats(name, s) {
+  return ["dirty", "clean"].map(c => { const x = s[c], f = v => v === null ? "—" : v;
+    return `<tr><td>${name}</td><td>${c === "dirty" ? "BẨN" : "SẠCH"}</td><td>${x.n}</td><td>${f(x.min)}</td><td>${f(x.median)}</td><td>${f(x.max)}</td></tr>`; }).join("");
+}
+$("evalBtn").onclick = async () => {
+  $("eval").textContent = "Đang tính…";
+  try {
+    const e = await api("GET", "/label/eval");
+    $("eval").innerHTML =
+      `<p><b>${esc(e.split)}</b> (${e.sessions} phiên)${e.same_data ? ' — <span class="no">cùng dữ liệu</span>' : ""}</p>` +
+      e.warnings.map(w => `<div class="warn">⚠ ${esc(w)}</div>`).join("") +
+      `<table><tr><th>Ngưỡng (phần đo, BẨN = dương)</th><th>Giá trị</th><th>Precision</th><th>Recall</th><th>Ma trận</th></tr>` +
+      `<tr><td>Đề xuất</td>${pr(e.suggested)}</tr><tr><td>Hiện tại (WP_DUST_RATIO)</td>${pr(e.current)}</tr></table>` +
+      `<p class="muted">Tỉ lệ điểm ảnh thay đổi so với ảnh tham chiếu của chính phiên:</p>` +
+      `<table><tr><th>Phần</th><th>Lớp</th><th>n</th><th>min</th><th>trung vị</th><th>max</th></tr>` +
+      stats("chọn ngưỡng", e.tune) + (e.same_data ? "" : stats("đo", e.test)) + `</table>` +
+      `<p class="muted">ROI ${esc(e.config.roi.join(","))} · WP_DUST_PIX ${e.config.pix}</p>`;
+  } catch (err) { $("eval").innerHTML = `<span class="no">${esc(err.message)}</span>`; }
+};
+
+// xem trước ~1 s/lần khi trang đang hiện
+let busy = false;
+async function tick() {
+  if (document.hidden || busy) return;
+  busy = true;
+  try {
+    const r = await fetch("/label/preview.jpg", { cache: "no-store" });
+    if (r.ok) {
+      const url = URL.createObjectURL(await r.blob()), old = $("preview").src;
+      $("preview").src = url; if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+      $("noimg").textContent = "";
+    } else {
+      const b = await r.json().catch(() => ({}));
+      $("noimg").textContent = `Không có hình: ${b.detail || r.status}`;
+    }
+  } catch (e) { $("noimg").textContent = "Mất kết nối server"; }
+  busy = false;
+}
+setInterval(tick, 1000);
+document.addEventListener("visibilitychange", tick);
+
+(async () => {
+  try {
+    if (session) { $("sess").textContent = session; await refresh(); }
+    else await newSession();
+  } catch (e) { await newSession().catch(err => say(err.message)); }
+  tick();
+})();
+</script>
+</body>
+</html>

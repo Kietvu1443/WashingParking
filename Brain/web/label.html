@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gán nhãn hư hỏng</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .lb { display: grid; grid-template-columns: 230px minmax(0, 1fr) 250px; gap: 16px; padding: 16px; align-items: start; }
+  .lb .card + .card { margin-top: 0; }
+  #stage { position: relative; background: var(--video-bg); border-radius: var(--r-panel); overflow: hidden; line-height: 0; }
+  #cv { width: 100%; touch-action: none; cursor: crosshair; display: block; }
+  #list { max-height: calc(100vh - 150px); overflow: auto; display: grid; gap: 4px; }
+  #list button { display: flex; gap: 8px; align-items: center; text-align: left; background: var(--panel2); color: var(--text); border: 1px solid transparent; border-radius: var(--r-ctl); padding: 6px 8px; font: 12px/1.3 var(--mono); cursor: pointer; }
+  #list button[aria-current="true"] { border-color: var(--accent-line); background: var(--accent-soft); }
+  #list .n { margin-left: auto; color: var(--muted); }
+  .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+  .cls { display: flex; align-items: center; gap: 8px; width: 100%; background: var(--panel2); color: var(--text); border: 1px solid transparent; border-radius: var(--r-ctl); padding: 7px 10px; font: 13px/1.3 var(--sans); cursor: pointer; margin-bottom: 4px; }
+  .cls[aria-pressed="true"] { border-color: var(--accent-line); background: var(--accent-soft); }
+  .cls kbd, .help kbd { font: 700 11px var(--mono); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; margin-left: auto; }
+  .help { font-size: 12px; color: var(--muted); line-height: 1.9; }
+  .help kbd { margin: 0 2px; }
+  .tools { display: flex; gap: 6px; margin-bottom: 12px; }
+  .tools .btn[aria-pressed="false"] { background: var(--panel2); color: var(--text); }
+  input.txt { width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-ctl); padding: 7px 10px; font: 13px var(--sans); }
+  @media (max-width: 1000px) { .lb { grid-template-columns: 1fr; } #list { max-height: 180px; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="brand-mark"><span class="ico i-car"></span></span><h1>SMARTPK<small>Gán nhãn hư hỏng</small></h1></div>
+  <span style="flex:1"></span>
+  <a class="btn ghost" href="/">← Về trạm</a>
+</header>
+<main class="lb">
+  <section class="card">
+    <h2>Ảnh <span class="tag" id="cnt"></span></h2>
+    <div class="row" style="margin-bottom:8px">
+      <select id="cam-pick" title="Chọn camera" aria-label="Chọn camera" style="flex:1;min-width:0"></select>
+      <button class="btn ghost icon" id="cam-refresh" title="Quét lại camera" aria-label="Quét lại camera"><span class="ico i-refresh"></span></button>
+    </div>
+    <img id="cam-prev" alt="Hình camera kiểm tra" style="width:100%;border-radius:var(--r-ctl);background:var(--video-bg);margin-bottom:8px;display:block;min-height:60px">
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn" id="b-cap"><span class="ico i-cam"></span>Chụp</button>
+      <button class="btn" id="b-up"><span class="ico i-upload"></span>Tải ảnh</button>
+      <input type="file" id="f-up" accept="image/jpeg,image/png" multiple hidden>
+    </div>
+    <div id="list"></div>
+  </section>
+
+  <section>
+    <div class="card" style="padding:12px">
+      <div class="row" style="margin-bottom:10px">
+        <b id="nm" class="muted" style="font:12px var(--mono)">—</b>
+        <span class="tag" id="st"></span>
+        <span style="flex:1"></span>
+        <button class="btn ghost" id="b-prev" title="A">←</button>
+        <button class="btn ghost" id="b-next" title="D">→</button>
+        <button class="btn" id="b-save">Lưu &amp; tiếp (S)</button>
+      </div>
+      <div id="stage"><canvas id="cv"></canvas></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>Công cụ</h2>
+      <div class="tools">
+        <button class="btn" data-tool="car" aria-pressed="false" title="C">Xe</button>
+        <button class="btn" data-tool="box" aria-pressed="true" title="B">Khung</button>
+        <button class="btn" data-tool="poly" aria-pressed="false" title="P">Đa giác</button>
+      </div>
+      <h2>Lớp hư hỏng</h2>
+      <div id="classes"></div>
+      <div class="row" style="margin-top:8px"><input class="txt" id="new-cls" placeholder="+ Thêm lớp (vd. Gương vỡ)" maxlength="40"></div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h2>Phím tắt</h2>
+      <div class="help">
+        <kbd>1</kbd>–<kbd>9</kbd> chọn lớp (đổi lớp khung đang chọn)<br>
+        <kbd>C</kbd> khung xe • <kbd>B</kbd> khung • <kbd>P</kbd> đa giác<br>
+        Đa giác: bấm từng điểm, <kbd>Enter</kbd> hoặc bấm điểm đầu để đóng, <kbd>Esc</kbd> huỷ<br>
+        <kbd>A</kbd>/<kbd>D</kbd> ảnh trước/sau • <kbd>S</kbd> lưu &amp; tiếp<br>
+        <kbd>Del</kbd> hoặc chuột phải: xoá • <kbd>Ctrl</kbd>+<kbd>Z</kbd> hoàn tác<br>
+        Kéo khung để di chuyển, kéo chấm để đổi cỡ.
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn ghost" id="b-del">Xoá ảnh</button>
+        <a class="btn ghost" id="b-zip" href="/api/dataset/zip" download>Tải dataset (.zip)</a>
+      </div>
+    </div>
+  </section>
+</main>
+<script src="label.js"></script>
+</body>
+</html>
