@@ -2,8 +2,9 @@
 
   python demo.py            # mặc định http://127.0.0.1:8000
   python demo.py --sim      # ghi rõ "MÔ PHỎNG" trên kết quả
-Biến môi trường: WP_API (địa chỉ server), WP_DEMO_SCALE (nhân mọi thời gian chờ, mặc định 1; mô phỏng chậm thì đặt 2–3).
+Biến môi trường: WP_API (địa chỉ server), WP_WEB_PASS (nếu server bật mật khẩu), WP_DEMO_SCALE (nhân mọi thời gian chờ, mặc định 1; mô phỏng chậm thì đặt 2–3).
 """
+import base64
 import json
 import os
 import sys
@@ -19,8 +20,10 @@ TAG = "[MÔ PHỎNG – chưa kiểm trên phần cứng] " if SIM else ""
 
 def call(method, path, body=None):
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(API + path, data=data, method=method,
-                                 headers={"Content-Type": "application/json"})
+    headers = {"Content-Type": "application/json"}
+    if os.environ.get("WP_WEB_PASS"):                      # server bật Basic-auth
+        headers["Authorization"] = "Basic " + base64.b64encode(b"demo:" + os.environ["WP_WEB_PASS"].encode()).decode()
+    req = urllib.request.Request(API + path, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=5) as r:
             return r.status, json.loads(r.read())

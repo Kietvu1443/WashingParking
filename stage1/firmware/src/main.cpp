@@ -1,31 +1,37 @@
-// Giai đoạn 1: ESP32-S3 nhận lệnh MQTT từ server, điều khiển 2 cổng, nút chọn, LED trạng thái.
+// Giai đoạn 1: ESP32 DevKit V1 nhận lệnh MQTT từ server, điều khiển 2 cổng, nút chọn, màn OLED trạng thái.
 // Lệnh (topic <prefix>/esp/cmd): OPEN_GATE, OPEN_WASH, ASK_CHOICE, END_CHOICE, DROP_WIFI,<giây>
 // Status (retained): ONLINE,GATE=OPEN|CLOSED,WASH=OPEN|CLOSED,GATE_CYCLES=<n>; Last Will = OFFLINE
 #include <Arduino.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
-#include <Adafruit_NeoPixel.h>
+#include <Wire.h>
+#include <U8g2lib.h>
 #include <ESP32Servo.h>
 #include "net_config.h"
 
-// ---- chân (dùng lại phần cứng bo lab4) ----
+// ---- chân (ESP32 thường: tránh flash 6-11, chỉ-vào 34-39, strapping 0/2/5/12/15) ----
 #define GATE_SERVO_PIN 18
-#define WASH_SERVO_PIN 39
-#define LED_ONLINE_PIN 11  // WS2812 ô 1
-#define LED_CHOICE_PIN 12  // WS2812 ô 2
-#define BUTTON_PIN 15      // nút -> GND
+#define PUMP_RELAY_PIN 23  // relay bơm nước (bơm nối COM/NO: mất điện = bơm tắt)
+#define OLED_SDA_PIN 21     // OLED I2C 128x64
+#define OLED_SCL_PIN 22     // chân "SCK" trên module
+#define BUTTON_PIN 27      // nút -> GND
 
 // ---- góc servo 180° (mặc định theo lab4 MO_HINH 2; hiệu chỉnh ở CP3 trên cổng thật) ----
 #define GATE_OPEN_DEG 15
 #define GATE_CLOSED_DEG 90
-#define WASH_OPEN_DEG 29
-#define WASH_CLOSED_DEG 90
+#define PUMP_RUN_MS 10000      // OPEN_WASH -> bơm chạy 10 s rồi ESP tự tắt, không chờ server
 // ---- Khác biệt mô phỏng / mạch thật: mỗi mục 1 cờ, mặc định = mạch thật (xem stage1/README.md) ----
 #ifndef SERVO_SAFE_90
-  #define SERVO_SAFE_90 0        // 1 = chỉ gửi 1500 us, không quay (env esp32s3 bật khi chưa biết loại servo)
+  #define SERVO_SAFE_90 0        // 1 = chỉ gửi 1500 us, không quay (env esp32dev bật khi chưa biết loại servo)
 #endif
 #ifndef SIM_HEARTBEAT_MS
   #define SIM_HEARTBEAT_MS 0     // >0: gửi <prefix>/esp/hb mỗi N ms (mô phỏng chạy chậm, broker cắt keepalive)
+#endif
+#ifndef RELAY_ACTIVE_LOW
+  #define RELAY_ACTIVE_LOW 1     // 1 = relay đóng khi IN mức THẤP (đa số module relay rẻ; chưa kiểm module thật)
+#endif
+#ifndef OLED_SH1106
+  #define OLED_SH1106 0          // 1 = module dùng chip SH1106 (ảnh lệch/rác ở mép), 0 = SSD1306 (Wokwi)
 #endif
 #ifndef SIM_SERIAL_BUTTON
   #define SIM_SERIAL_BUTTON 0    // 1: gõ 'b' qua serial = nhấn nút 200 ms
@@ -47,11 +53,15 @@ const String CLIENT_ID = String(TOPIC_PREFIX) + "-esp32";
 
 WiFiClient net;
 PubSubClient mqtt(net);
-Adafruit_NeoPixel ledOnline(1, LED_ONLINE_PIN, NEO_GRB + NEO_KHZ800);
-Adafruit_NeoPixel ledChoice(1, LED_CHOICE_PIN, NEO_GRB + NEO_KHZ800);
-Servo gateServo, washServo;
+#if OLED_SH1106
+U8G2_SH1106_128X64_NONAME_F_HW_I2C oled(U8G2_R0, U8X8_PIN_NONE);
+#else
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, U8X8_PIN_NONE);
+#endif
+bool oledOk = false;          // false = không thấy màn: bỏ qua vẽ, phần còn lại chạy bình thường
+Servo gateServo;
 
-bool gateOpen = false, washOpen = false;
+bool gateOpen = false, washOpen = false;  // washOpen = bơm đang chạy (status WASH=OPEN)
 uint32_t gateOpenedAt = 0, washOpenedAt = 0;
 uint32_t gateCycles = 0;      // số lần cổng vào mở -> đóng xong, tính từ lúc bật nguồn
 bool statusDirty = false;     // cần gửi status khi online
@@ -63,9 +73,23 @@ uint32_t dropUntil = 0;       // >0: đang cố ý ngắt WiFi (Test D)
 uint32_t lastMqttTry = 0;
 uint32_t wifiLostAt = 0;
 
-void setLed(Adafruit_NeoPixel &p, uint8_t r, uint8_t g, uint8_t b) {
-  p.setPixelColor(0, p.Color(r, g, b));
-  p.show();
+void drawStatus(bool online, bool blinkOn) {
+  if (!oledOk) return;
+  uint32_t t0 = micros();
+  oled.clearBuffer();
+  oled.setFont(u8g2_font_6x10_tf);
+  oled.drawStr(0, 10, online ? "MANG: ONLINE" : "MANG: OFFLINE");
+  oled.drawStr(0, 22, gateOpen ? "CONG VAO: MO" : "CONG VAO: DONG");
+  oled.drawStr(0, 34, washOpen ? "BOM NUOC: CHAY" : "BOM NUOC: TAT");
+  if (blinkOn) {  // chế độ chọn: ô nhắc đảo màu, nhấp nháy 1 Hz
+    oled.drawBox(0, 50, 128, 14);
+    oled.setDrawColor(0);
+    oled.drawStr(13, 61, "BAM NUT DE RUA XE");
+    oled.setDrawColor(1);
+  }
+  oled.sendBuffer();
+  static bool timed = false;
+  if (!timed) { timed = true; Serial.printf("[OLED] ve 1 lan mat %lu us\n", (unsigned long)(micros() - t0)); }
 }
 
 void servoTo(Servo &s, const char *name, int deg) {
@@ -75,6 +99,11 @@ void servoTo(Servo &s, const char *name, int deg) {
   s.write(deg);
   Serial.printf("[SERVO] %s -> %d do\n", name, deg);
 #endif
+}
+
+void setPump(bool on) {
+  digitalWrite(PUMP_RELAY_PIN, on == !RELAY_ACTIVE_LOW ? HIGH : LOW);
+  Serial.printf("[BOM] %s\n", on ? "CHAY" : "TAT");
 }
 
 void publishStatus() {
@@ -99,14 +128,13 @@ void openWash() {
   if (washOpen) return;
   washOpen = true;
   washOpenedAt = millis();
-  servoTo(washServo, "cong rua", WASH_OPEN_DEG);
+  setPump(true);
   statusDirty = true;
 }
 
 void setChoice(bool on) {
   choiceArmed = on;
   choiceSince = millis();
-  if (!on) setLed(ledChoice, 0, 0, 0);
 }
 
 void startDrop(int sec) {
@@ -156,23 +184,32 @@ void setup() {
 
   // Servo về ĐÓNG ngay khi khởi động: reset không thể để cổng mở
   gateServo.setPeriodHertz(50);
-  washServo.setPeriodHertz(50);
   gateServo.attach(GATE_SERVO_PIN, 500, 2500);
-  washServo.attach(WASH_SERVO_PIN, 500, 2500);
 #if SERVO_SAFE_90
   gateServo.writeMicroseconds(1500);  // test an toàn: đúng 1500 us (servo 360 thì đứng yên)
-  washServo.writeMicroseconds(1500);
-  Serial.println("[SERVO] SAFE_90: ca 2 servo nhan 1500 us, khong dieu khien them");
+  Serial.println("[SERVO] SAFE_90: servo cong vao nhan 1500 us, khong dieu khien them");
 #else
   servoTo(gateServo, "cong vao", GATE_CLOSED_DEG);
-  servoTo(washServo, "cong rua", WASH_CLOSED_DEG);
 #endif
+  // Bơm TẮT ngay khi khởi động: ghi mức TẮT trước khi bật OUTPUT để relay không nháy
+  digitalWrite(PUMP_RELAY_PIN, RELAY_ACTIVE_LOW ? HIGH : LOW);
+  pinMode(PUMP_RELAY_PIN, OUTPUT);
+  setPump(false);
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
-  ledOnline.begin();
-  ledChoice.begin();
-  setLed(ledOnline, 40, 0, 0);  // đỏ = chưa online
-  setLed(ledChoice, 0, 0, 0);
+  Wire.begin(OLED_SDA_PIN, OLED_SCL_PIN);
+  uint8_t oledAddr = 0;
+  for (uint8_t a : {0x3C, 0x3D}) {
+    Wire.beginTransmission(a);
+    if (Wire.endTransmission() == 0) { oledAddr = a; break; }
+  }
+  if (oledAddr) {
+    oled.setI2CAddress(oledAddr * 2);  // U8g2 dùng địa chỉ 8 bit
+    oled.setBusClock(400000);
+    oledOk = oled.begin();
+  }
+  Serial.printf("[OLED] %s 0x%02X (chip %s)\n", oledOk ? "thay" : "KHONG thay", oledAddr, OLED_SH1106 ? "SH1106" : "SSD1306");
+  drawStatus(false, false);
 
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
@@ -196,21 +233,14 @@ void loop() {
     servoTo(gateServo, "cong vao", GATE_CLOSED_DEG);
     statusDirty = true;
   }
-  if (washOpen && now - washOpenedAt >= GATE_OPEN_MS) {
+  if (washOpen && now - washOpenedAt >= PUMP_RUN_MS) {
     washOpen = false;
-    servoTo(washServo, "cong rua", WASH_CLOSED_DEG);
+    setPump(false);
     statusDirty = true;
   }
 
-  // 2) Chế độ chọn: LED 2 nhấp nháy vàng, nút gửi BUTTON (chống dội)
-  if (choiceArmed) {
-    if (now - choiceSince >= CHOICE_MAX_MS) setChoice(false);
-    else {
-      bool on = (now / 500) % 2;
-      static bool lastOn = false;
-      if (on != lastOn) { lastOn = on; on ? setLed(ledChoice, 40, 30, 0) : setLed(ledChoice, 0, 0, 0); }
-    }
-  }
+  // 2) Chế độ chọn: OLED nhắc (mục 5), nút gửi BUTTON (chống dội)
+  if (choiceArmed && now - choiceSince >= CHOICE_MAX_MS) setChoice(false);
   static bool btnStable = HIGH, btnLast = HIGH;
   static uint32_t btnChangedAt = 0;
   bool raw = digitalRead(BUTTON_PIN);
@@ -276,10 +306,13 @@ void loop() {
 #endif
   }
 
-  static bool shownOnline = false;
+  // 5) OLED: chỉ vẽ lại khi trạng thái đổi (gửi cả màn qua I2C mất vài chục ms)
   bool online = mqtt.connected();
-  if (online != shownOnline) {
-    shownOnline = online;
-    online ? setLed(ledOnline, 0, 40, 0) : setLed(ledOnline, 40, 0, 0);
+  bool blinkOn = choiceArmed && (now / 500) % 2;
+  int16_t shown = online | gateOpen << 1 | washOpen << 2 | blinkOn << 3;
+  static int16_t lastShown = -1;
+  if (shown != lastShown) {
+    lastShown = shown;
+    drawStatus(online, blinkOn);
   }
 }

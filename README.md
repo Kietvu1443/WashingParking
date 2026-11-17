@@ -2,7 +2,13 @@
 
 Dự án mô phỏng một trạm **rửa xe + gửi xe** có AI: camera đọc biển số, nhận diện khoang trống, đo độ bẩn, tự trừ tiền ví khi xe ra cổng.
 
-Hiện tại repo có **bản demo 3D chạy trên trình duyệt** (thư mục `demo/`). Backend (FastAPI), giao diện Next.js và AI thật **chưa được xây**; toàn bộ "AI" trong demo là **giả lập** (hiển thị khung quét và phần trăm tin cậy cho giống thật).
+Repo gồm hai phần độc lập:
+
+- **`demo/`**: bản demo 3D chạy trên trình duyệt. "AI" trong demo là **giả lập** (khung quét và phần trăm tin cậy chỉ để minh họa).
+- **`SmartPK_PC/`**: chương trình chạy thật trên PC: camera + AI (YOLO, OCR biển số), web điều khiển, cơ sở dữ liệu `parking.db` và kết nối ESP32 qua cổng COM. Xem [mục 5](#5-smartpk_pc-chương-trình-ai-thật).
+- **`shared/protocol.md`**: đặc tả giao thức MQTT giữa server và thiết bị (ESP32 hoặc demo đóng vai ESP32). Đang ở dạng nháp.
+
+Backend FastAPI, giao diện Next.js và MQTT **chưa được xây**; `SmartPK_PC` hiện nói chuyện với ESP32 bằng UART, chưa theo `protocol.md`.
 
 ## 1. Chạy demo
 
@@ -109,15 +115,45 @@ WashingParking/
 │   ├── models.js          Mô hình xe, nhãn chữ
 │   ├── app.js             Vòng lặp, di chuyển xe, camera AI giả lập, bảng điều khiển
 │   └── vendor/            Three.js + OrbitControls (giấy phép MIT)
-├── docs/superpowers/
-│   ├── specs/             Đặc tả thiết kế hệ thống (mục 4b là máy trạng thái chuẩn)
-│   └── plans/             Kế hoạch triển khai backend/frontend (cần chỉnh lại)
-└── idea/                  Kịch bản gốc của hệ thống
+├── SmartPK_PC/            Chương trình AI chạy trên PC (xem mục 5)
+│   ├── run.py             Cài .venv và chạy chương trình
+│   ├── pc_ai_camera.py    Chương trình bãi đỗ: 4 ô, đọc biển số, LCD ESP32
+│   ├── tram_ai.py         Trạm kiểm tra xe: quét hư hỏng, đề xuất dịch vụ
+│   ├── station/           Các module của trạm (camera, plate, damage, db, esp, server...)
+│   ├── web/, web3d/       Giao diện web
+│   ├── ESP32/             Firmware Arduino cho ESP32-S3
+│   ├── dich_vu.json       Lỗi hư hỏng → dịch vụ + giá
+│   ├── station.example.json  Mẫu cấu hình (chép thành station.json)
+│   └── slots.json, background.png  Vị trí 4 ô và ảnh nền bãi trống
+├── shared/protocol.md     Giao thức MQTT server ↔ thiết bị (nháp)
+├── Backup/                Bản sao lưu mô hình
+├── docs/, idea/           Đặc tả, kế hoạch, kịch bản gốc (nằm trong .gitignore, chỉ có trên máy gốc)
 ```
 
-**Nguyên tắc:** mọi luật nghiệp vụ nằm ở `logic.js`. `app.js` chỉ vẽ lại và gọi hàm của `logic.js`. Khi viết backend, cần cho kết quả **tương đương** `logic.js` (xem `docs/.../2026-11-11-washing-parking-system-design.md`, mục 4b).
+**Nguyên tắc cho demo:** mọi luật nghiệp vụ nằm ở `logic.js`. `app.js` chỉ vẽ lại và gọi hàm của `logic.js`. Khi viết backend, cần cho kết quả **tương đương** `logic.js` (xem `docs/superpowers/specs/2026-11-11-washing-parking-system-design.md`, mục 4b).
 
-## 5. Muốn sửa thì sửa ở đâu?
+## 5. SmartPK_PC: chương trình AI thật
+
+Cần Python 3.9 đến 3.12, camera và (tùy chọn) ESP32-S3. Chạy trong thư mục `SmartPK_PC`:
+
+```bash
+python run.py --setup      # lần đầu: tạo .venv, cài thư viện (cần Internet)
+python run.py              # chạy pc_ai_camera.py, mở http://localhost:8000
+python run.py tram_ai.py   # trạm kiểm tra xe (chạy bằng .venv), cũng ở cổng 8000
+```
+
+Tham số hay dùng: `--cam 1` (chọn camera), `--port COM5` (cổng ESP32), `--web-pass MAT_KHAU` (mật khẩu trang web). Camera và cổng ESP32 được tự tìm.
+
+Hai chương trình dùng chung CSDL và đều mặc định cổng 8000, nên **chỉ chạy một cái mỗi lần**.
+
+- **`pc_ai_camera.py`**: YOLO tìm xe và biển số, đọc biển bằng OCR, tra chủ xe, theo dõi 4 ô đỗ, gửi lệnh `PLATE` xuống ESP32 để LCD hiện biển số 5 giây (xe đăng ký hiện tên chủ xe, xe lạ hiện "XE LA CHUA DK").
+- **`tram_ai.py`**: camera quét xe, AI tìm biển số và hư hỏng (kính vỡ, móp thân, lốp hỏng), đề xuất dịch vụ và giá theo `dich_vu.json`. Cấu hình camera và ngưỡng nằm trong `station.json` (chép từ `station.example.json`).
+- **`parking.db`** (SQLite, tự tạo cạnh chương trình): bảng `owners` (chủ xe) và `logs` (nhật ký biển số). Ảnh biển lưu trong `plates/`. Sao lưu bằng cách chép file. File này, `plates/`, `station.json`, `inspections/` và các mô hình `.onnx`/`.pt` **không nằm trong git**.
+- **Firmware ESP32**: xem `SmartPK_PC/ESP32/README_NAP_FIRMWARE.txt` (chọn `MO_HINH` 1 hoặc 2 trong file `.ino`).
+
+Chi tiết và lỗi thường gặp: `SmartPK_PC/README.txt`, `SmartPK_PC/HUONG_DAN_PC.txt`. Các mô hình `.onnx` không có trong repo; cần chép vào `SmartPK_PC/` (có bản `xe_best.onnx` trong `Backup/`).
+
+## 6. Muốn sửa demo thì sửa ở đâu?
 
 | Muốn đổi | Sửa file | Chỗ cần tìm |
 |---|---|---|
@@ -133,14 +169,14 @@ Sau khi sửa `logic.js`, luôn chạy lại `node demo/logic.test.mjs`.
 
 Nếu sau khi cập nhật code mà trang báo lỗi lạ hoặc không đổi gì, trình duyệt đang dùng file cũ trong bộ nhớ đệm: bấm **Ctrl+F5** (tải lại cứng).
 
-## 6. Hạn chế hiện tại
+## 7. Hạn chế hiện tại
 
-- AI chỉ là **giả lập** (không dùng mô hình thật); độ bẩn là số ngẫu nhiên.
+- Trong `demo/`, AI chỉ là **giả lập**; độ bẩn là số ngẫu nhiên. `SmartPK_PC` chưa tích hợp với demo.
 - **Xe máy chưa nằm trong phạm vi** demo (chỉ ô tô và xe tải).
-- Chưa có backend, cơ sở dữ liệu, đăng nhập, nạp tiền ví. Dữ liệu mất khi tải lại trang.
+- Demo chưa có backend, đăng nhập, nạp tiền ví; dữ liệu mất khi tải lại trang. `SmartPK_PC` chưa có thanh toán/ví.
 - Chưa có làn riêng/đặt chỗ gửi xe trước, cảnh báo gửi quá giờ.
 
-## 7. Hướng phát triển
+## 8. Hướng phát triển
 
 - Backend FastAPI + WebSocket, đồng bộ với `logic.js`.
 - AI thật: nhận diện xe/biển số (YOLO + OCR), ước lượng độ bẩn từ ảnh camera.

@@ -1,0 +1,19 @@
+{
+ "time": "2026-11-15 21:52:15",
+ "plate": null,
+ "plate_display": "",
+ "owner": null,
+ "known": false,
+ "vehicle_type": "xe",
+ "frames_scanned": 15,
+ "findings": [],
+ "recommendations": [],
+ "need_staff": true,
+ "need_reasons": [
+  "Chưa đọc được biển số",
+  "Chưa có mô hình hư hỏng"
+ ],
+ "damage_model_loaded": false,
+ "id": 3,
+ "car_image": "3/car.jpg"
+}

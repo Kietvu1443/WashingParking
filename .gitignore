@@ -12,5 +12,12 @@ SmartPK_PC/plates/
 *.pt
 SmartPK_PC/inspections/
 stage1/server/stage1.db
+stage1/server/photos/
+stage1/server/test_images/gt/
 stage1/firmware/.pio/
 stage1/firmware/src/secrets.h
+CLAUDE.md
+shared
+stage1/server/dataset_ban_sach/
+stage1/server/dataset_bien_so/
+stage1/server/dataset_dirt/

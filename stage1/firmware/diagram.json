@@ -3,11 +3,10 @@
   "author": "WashingParking stage 1",
   "editor": "wokwi",
   "parts": [
-    { "type": "board-esp32-s3-devkitc-1", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": 0, "attrs": {} },
     { "type": "wokwi-servo", "id": "gate", "top": -130, "left": 160, "attrs": { "horn": "single" } },
-    { "type": "wokwi-servo", "id": "wash", "top": 10, "left": 160, "attrs": { "horn": "single", "hornColor": "#000088" } },
-    { "type": "wokwi-neopixel", "id": "led_online", "top": 160, "left": -120, "attrs": {} },
-    { "type": "wokwi-neopixel", "id": "led_choice", "top": 200, "left": -120, "attrs": {} },
+    { "type": "wokwi-relay-module", "id": "pump", "top": 40, "left": 180, "attrs": { "transistor": "npn" } },
+    { "type": "board-ssd1306", "id": "oled", "top": 150, "left": -170, "attrs": { "i2cAddress": "0x3c" } },
     { "type": "wokwi-pushbutton", "id": "btn", "top": 260, "left": -150, "attrs": { "color": "green", "label": "Rua (B)", "key": "b" } }
   ],
   "connections": [
@@ -18,19 +17,16 @@
     [ "gate:V+", "esp:5V", "red", [] ],
     [ "gate:GND", "esp:GND.1", "black", [] ],
 
-    [ "wash:PWM", "esp:39", "orange", [] ],
-    [ "wash:V+", "esp:5V", "red", [] ],
-    [ "wash:GND", "esp:GND.2", "black", [] ],
+    [ "pump:IN", "esp:23", "orange", [] ],
+    [ "pump:VCC", "esp:5V", "red", [] ],
+    [ "pump:GND", "esp:GND.2", "black", [] ],
 
-    [ "led_online:DIN", "esp:11", "green", [] ],
-    [ "led_online:VDD", "esp:5V", "red", [] ],
-    [ "led_online:VSS", "esp:GND.1", "black", [] ],
+    [ "oled:SDA", "esp:21", "green", [] ],
+    [ "oled:SCL", "esp:22", "purple", [] ],
+    [ "oled:VCC", "esp:3V3", "red", [] ],
+    [ "oled:GND", "esp:GND.1", "black", [] ],
 
-    [ "led_choice:DIN", "esp:12", "green", [] ],
-    [ "led_choice:VDD", "esp:5V", "red", [] ],
-    [ "led_choice:VSS", "esp:GND.1", "black", [] ],
-
-    [ "btn:1.l", "esp:15", "blue", [] ],
+    [ "btn:1.l", "esp:27", "blue", [] ],
     [ "btn:2.l", "esp:GND.1", "black", [] ]
   ]
 }

@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trạm rửa & gửi xe</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --ink:#1d2330; --muted:#6b7280; --line:#e3e6eb; --accent:#1f6feb;
+          --ok:#1a7f37; --warn:#b26b00; --bad:#c62828; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui, "Segoe UI", Roboto, sans-serif; }
+  header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; padding:12px 16px; background:var(--card); border-bottom:1px solid var(--line); }
+  header h1 { font-size:18px; margin:0 auto 0 0; }
+  .badge { padding:3px 10px; border-radius:999px; font-size:13px; font-weight:600; background:#eee; }
+  .on { background:#dcfce7; color:var(--ok); } .off { background:#fde2e2; color:var(--bad); }
+  nav { display:flex; gap:4px; padding:8px 16px 0; }
+  nav button { border:1px solid var(--line); border-bottom:none; background:#e9ecf1; padding:8px 16px; border-radius:8px 8px 0 0; cursor:pointer; font:inherit; }
+  nav button.active { background:var(--card); font-weight:600; }
+  main { padding:16px; display:grid; gap:16px; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); align-items:start; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; }
+  .card h2 { font-size:15px; margin:0 0 10px; }
+  .wide { grid-column:1 / -1; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:8px 0; }
+  input[type=text], select { font:inherit; padding:7px 9px; border:1px solid var(--line); border-radius:6px; min-width:0; }
+  button.b { font:inherit; padding:8px 14px; border-radius:6px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+  button.b:disabled { opacity:.45; cursor:not-allowed; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.dirty { background:#8a4b14; border-color:#8a4b14; color:#fff; }
+  button.clean { background:var(--ok); border-color:var(--ok); color:#fff; }
+  .big { font-size:28px; font-weight:700; letter-spacing:.5px; }
+  .muted { color:var(--muted); font-size:13px; }
+  .msg { min-height:20px; font-size:14px; white-space:pre-wrap; }
+  .msg.err { color:var(--bad); } .msg.ok { color:var(--ok); }
+  .snap { width:100%; aspect-ratio:16/9; object-fit:contain; background:#111; border-radius:6px; display:block; }
+  .state { display:inline-block; padding:2px 8px; border-radius:6px; background:#eef2ff; font-weight:600; }
+  .state.WASHING { background:#dcfce7; } .state.PARKED { background:#e0f2fe; } .state.ERROR { background:#fde2e2; }
+  .state.AWAITING_CHOICE { background:#fff4d6; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+  tbody tr { cursor:pointer; } tbody tr:hover { background:#f7f8fa; }
+  .grid { display:grid; gap:10px; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); }
+  .tile { border:1px solid var(--line); border-radius:8px; padding:6px; background:#fafbfc; }
+  .tile img { width:100%; height:110px; object-fit:contain; background:#111; border-radius:4px; display:block; }
+  .tile .row { margin:6px 0 0; gap:4px; }
+  .tile input[type=text] { width:100%; }
+  .hidden { display:none !important; }
+  @media (max-width:520px) { main { padding:10px; grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Trạm rửa & gửi xe</h1>
+  <span id="mode" class="badge">AI: …</span>
+  <span id="esp" class="badge off">ESP: …</span>
+  <a class="badge" href="/label">Chụp bộ bẩn/sạch (camera)</a>
+</header>
+<nav>
+  <button class="active" data-tab="op">Vận hành</button>
+  <button data-tab="label">Gán nhãn</button>
+</nav>
+
+<main id="tab-op">
+  <section class="card">
+    <h2>Lượt hiện tại</h2>
+    <div id="cur-none" class="muted">Chưa có lượt nào.</div>
+    <div id="cur" class="hidden">
+      <div class="big" id="cur-plate"></div>
+      <div class="row"><span class="state" id="cur-state"></span><span class="muted" id="cur-id"></span></div>
+      <div id="cur-note" class="muted"></div>
+      <img id="cur-photo" class="snap hidden" alt="Ảnh camera 1 của lượt">
+      <div id="choice-box" class="hidden">
+        <p><b>Xe sạch – khách chọn:</b> <span id="countdown"></span></p>
+        <div class="row">
+          <button class="b primary" id="btn-wash">Rửa xe</button>
+          <button class="b" id="btn-park">Gửi xe</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Camera 1 – biển số (cổng vào)</h2>
+    <img id="snap1" class="snap hidden" alt="Camera 1">
+    <div id="snap1-msg" class="muted hidden"></div>
+    <div class="row real-only hidden"><input type="file" id="file1" accept="image/jpeg,image/png"></div>
+    <div class="row">
+      <input type="text" id="plate" maxlength="20" placeholder="Biển số">
+      <button class="b primary" id="btn-cam1">Xe vào</button>
+    </div>
+    <div id="msg1" class="msg"></div>
+  </section>
+
+  <section class="card">
+    <h2>Camera 2 – tình trạng xe</h2>
+    <img id="snap2" class="snap hidden" alt="Camera 2">
+    <div id="snap2-msg" class="muted hidden"></div>
+    <div class="row real-only hidden"><input type="file" id="file2" accept="image/jpeg,image/png"></div>
+    <p class="muted">Chưa có mô hình bẩn/sạch: nhân viên chọn. Ở chế độ AI thật, mỗi lần chọn sẽ lưu ảnh làm dữ liệu gán nhãn.</p>
+    <div class="row">
+      <button class="b dirty" id="btn-dirty">BẨN – rửa ngay</button>
+      <button class="b clean" id="btn-clean">SẠCH – hỏi khách</button>
+    </div>
+    <div id="msg2" class="msg"></div>
+  </section>
+
+  <section class="card wide">
+    <h2>Lượt gần đây</h2>
+    <table>
+      <thead><tr><th>#</th><th>Biển số</th><th>Trạng thái</th><th>Thời gian</th></tr></thead>
+      <tbody id="visits"></tbody>
+    </table>
+    <div id="events" class="muted"></div>
+  </section>
+
+  <section class="card">
+    <h2>Kiểm tra</h2>
+    <div class="row"><button class="b" id="btn-drop">Ngắt WiFi ESP 15 s</button></div>
+    <div id="msg-test" class="msg"></div>
+    <p class="muted"><a href="/docs">Swagger /docs</a></p>
+  </section>
+</main>
+
+<main id="tab-label" class="hidden">
+  <section class="card wide">
+    <h2>Bẩn / Sạch <span class="muted" id="dirt-counts"></span></h2>
+    <div class="row">
+      <input type="file" id="dirt-files" accept="image/jpeg,image/png" multiple>
+      <select id="dirt-cls"><option value="ban">Bẩn</option><option value="sach">Sạch</option></select>
+      <button class="b primary" id="btn-dirt-up">Tải ảnh lên</button>
+      <span style="flex:1"></span>
+      <select id="dirt-filter"><option value="">Tất cả</option><option value="ban">Bẩn</option><option value="sach">Sạch</option></select>
+      <a class="b" href="/dataset/ban_sach.zip" download>Tải zip</a>
+    </div>
+    <div id="msg-dirt" class="msg"></div>
+    <div id="dirt-grid" class="grid"></div>
+  </section>
+
+  <section class="card wide">
+    <h2>Biển số (sửa chữ đọc sai) <span class="muted" id="plate-count"></span></h2>
+    <p class="muted">Tự lưu khi nhân viên gõ biển ở Camera 1 (AI thật). Có thể tải ảnh cắt biển lên kèm chữ đúng.</p>
+    <div class="row">
+      <input type="file" id="plate-file" accept="image/jpeg,image/png">
+      <input type="text" id="plate-text" maxlength="15" placeholder="Chữ biển đúng">
+      <button class="b primary" id="btn-plate-up">Tải ảnh lên</button>
+      <span style="flex:1"></span>
+      <a class="b" href="/dataset/bien_so.zip" download>Tải zip</a>
+    </div>
+    <div id="msg-plate" class="msg"></div>
+    <div id="plate-grid" class="grid"></div>
+  </section>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const STATE_VI = { PLATE_CAPTURED: "Đã đọc biển", GATE_OPEN: "Đang mở cổng", INSPECTING: "Chờ camera 2",
+  AWAITING_CHOICE: "Chờ khách chọn", WASHING: "Rửa xe", PARKED: "Gửi xe", ERROR: "Lỗi" };
+const TERMINAL = ["WASHING", "PARKED", "ERROR"];
+let cfg = { ai_mode: "mock", cams: {} }, esp = {}, current = null, shownVisit = null;
+
+function el(tag, props = {}, ...kids) {           // dựng DOM bằng textContent: không bao giờ chèn HTML từ dữ liệu
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") e.className = v; else if (k === "text") e.textContent = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v);
+  }
+  kids.forEach((c) => e.append(c));
+  return e;
+}
+function say(id, text, kind = "") { const m = $(id); m.textContent = text; m.className = "msg " + kind; }
+async function api(method, url, body) {
+  const opt = { method };
+  if (body instanceof FormData || body instanceof Blob) opt.body = body;
+  else if (body !== undefined) { opt.body = JSON.stringify(body); opt.headers = { "Content-Type": "application/json" }; }
+  let r;
+  try { r = await fetch(url, opt); } catch (e) { return { ok: false, status: 0, data: { detail: "không gọi được server" } }; }
+  let data = null;
+  try { data = await r.json(); } catch (e) { /* không phải JSON */ }
+  return { ok: r.ok, status: r.status, data };
+}
+function detail(res) {
+  const d = res.data && res.data.detail;
+  const why = res.data && res.data.ai && res.data.ai.reason;
+  return (typeof d === "string" ? d : JSON.stringify(d)) + (why ? ` (AI: ${why})` : "");
+}
+
+// ---- tabs ----
+document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("active", x === b));
+  $("#tab-op").classList.toggle("hidden", b.dataset.tab !== "op");
+  $("#tab-label").classList.toggle("hidden", b.dataset.tab !== "label");
+  if (b.dataset.tab === "label") { loadDirt(); loadPlates(); }
+}));
+
+// ---- vận hành ----
+function renderEsp() {
+  const b = $("#esp");
+  b.textContent = esp.online ? `ESP: online · cổng ${esp.gate_cycles} lần` : "ESP: offline";
+  b.className = "badge " + (esp.online ? "on" : "off");
+  const active = esp.state && !TERMINAL.includes(esp.state);
+  $("#btn-cam1").disabled = active;
+  $("#btn-dirty").disabled = $("#btn-clean").disabled = esp.state !== "INSPECTING";
+}
+function renderCurrent(v) {
+  $("#cur-none").classList.toggle("hidden", !!v);
+  $("#cur").classList.toggle("hidden", !v);
+  if (!v) return;
+  $("#cur-plate").textContent = v.plate;
+  const s = $("#cur-state"); s.textContent = STATE_VI[v.state] || v.state; s.className = "state " + v.state;
+  $("#cur-id").textContent = `lượt #${v.id}`;
+  const last = v.events && v.events[v.events.length - 1];
+  $("#cur-note").textContent = last && last.note ? last.note : "";
+  const ph = $("#cur-photo");
+  if (cfg.ai_mode === "real" && v.photo_path) {
+    if (shownVisit !== v.id) ph.src = `/visits/${v.id}/photo`;
+    ph.classList.remove("hidden");
+  } else ph.classList.add("hidden");
+  shownVisit = v.id;
+  const waiting = v.state === "AWAITING_CHOICE";
+  $("#choice-box").classList.toggle("hidden", !waiting);
+  if (waiting) {
+    const ev = [...v.events].reverse().find((e) => e.state === "AWAITING_CHOICE");
+    const left = ev ? Math.max(0, Math.ceil(esp.choice_timeout - (Date.now() - new Date(ev.at).getTime()) / 1000)) : "";
+    $("#countdown").textContent = left !== "" ? `còn ${left} s (hết giờ → gửi xe)` : "";
+  }
+}
+function renderVisits(list) {
+  const tb = $("#visits"); tb.replaceChildren();
+  list.slice(0, 15).forEach((v) => tb.append(el("tr", { onclick: () => showEvents(v.id) },
+    el("td", { text: v.id }), el("td", { text: v.plate }),
+    el("td", {}, el("span", { class: "state " + v.state, text: STATE_VI[v.state] || v.state })),
+    el("td", { text: (v.created_at || "").replace("T", " ").slice(0, 19) }))));
+}
+async function showEvents(id) {
+  const r = await api("GET", `/visits/${id}`);
+  if (!r.ok) return;
+  const box = $("#events"); box.replaceChildren(el("b", { text: `Lượt #${id} (${r.data.plate}): ` }));
+  r.data.events.forEach((e, i) => box.append((i ? " → " : "") + `${STATE_VI[e.state] || e.state}${e.note ? " [" + e.note + "]" : ""} ${e.at.slice(11, 19)}`));
+}
+async function poll() {
+  const r = await api("GET", "/esp");
+  if (r.ok) {
+    esp = r.data; renderEsp();
+    if (esp.visit_id) { const v = await api("GET", `/visits/${esp.visit_id}`); current = v.ok ? v.data : null; }
+    else current = null;
+    renderCurrent(current);
+  } else { $("#esp").textContent = "Server: không kết nối"; $("#esp").className = "badge off"; }
+  const vs = await api("GET", "/visits");
+  if (vs.ok) renderVisits(vs.data);
+}
+function snapLoop(role) {
+  const img = $("#snap" + role.slice(-1)), msg = $("#snap" + role.slice(-1) + "-msg");
+  if (cfg.ai_mode !== "real") return;
+  if (!cfg.cams[role]) { msg.textContent = `Chưa đặt WP_${role.toUpperCase()}_SRC – chọn tệp ảnh bên dưới.`; msg.classList.remove("hidden"); return; }
+  img.classList.remove("hidden");
+  img.onerror = () => { msg.textContent = "Không có hình từ camera."; msg.classList.remove("hidden"); };
+  img.onload = () => msg.classList.add("hidden");
+  setInterval(() => { if (!document.hidden && !$("#tab-op").classList.contains("hidden")) img.src = `/cam/${role}.jpg?t=${Date.now()}`; }, 1000);
+}
+
+$("#btn-cam1").addEventListener("click", async () => {
+  const plate = $("#plate").value.trim();
+  let r;
+  if (cfg.ai_mode === "real") {
+    const fd = new FormData();
+    if ($("#file1").files[0]) fd.append("file", $("#file1").files[0]);
+    if (plate) fd.append("plate", plate);
+    r = await api("POST", "/cam1", fd);
+  } else {
+    if (!plate) return say("#msg1", "Nhập biển số.", "err");
+    r = await api("POST", "/cam1", { plate });
+  }
+  if (r.ok) {
+    const v = r.data.visit || r.data, ai = r.data.ai;
+    say("#msg1", `Lượt #${v.id}: ${v.plate} → ${STATE_VI[v.state] || v.state}` + (ai ? ` · AI ${ai.plate || "-"} (${ai.reason})` : ""), "ok");
+    $("#plate").value = ""; $("#file1").value = "";
+  } else {
+    say("#msg1", `Lỗi ${r.status}: ${detail(r)}` + (r.status === 422 && cfg.ai_mode === "real" ? "\nGõ biển số đúng rồi bấm lại (sẽ lưu làm mẫu sửa biển)." : ""), "err");
+    if (r.status === 422) $("#plate").focus();
+  }
+  poll();
+});
+async function cam2(condition) {
+  let r;
+  if (cfg.ai_mode === "real") {
+    const fd = new FormData();
+    if ($("#file2").files[0]) fd.append("file", $("#file2").files[0]);
+    fd.append("condition", condition);
+    r = await api("POST", "/cam2", fd);
+  } else r = await api("POST", "/cam2", { condition });
+  if (r.ok) { const v = r.data.visit || r.data; say("#msg2", `Lượt #${v.id} → ${STATE_VI[v.state] || v.state}`, "ok"); $("#file2").value = ""; }
+  else say("#msg2", `Lỗi ${r.status}: ${detail(r)}`, "err");
+  poll();
+}
+$("#btn-dirty").addEventListener("click", () => cam2("DIRTY"));
+$("#btn-clean").addEventListener("click", () => cam2("CLEAN"));
+async function choose(choice) {
+  const r = await api("POST", "/choice", { choice });
+  if (!r.ok) say("#msg2", `Lỗi ${r.status}: ${detail(r)}`, "err");
+  poll();
+}
+$("#btn-wash").addEventListener("click", () => choose("wash"));
+$("#btn-park").addEventListener("click", () => choose("park"));
+$("#btn-drop").addEventListener("click", async () => {
+  const r = await api("POST", "/test/drop_wifi?sec=15");
+  say("#msg-test", r.ok ? "Đã gửi DROP_WIFI,15 – ESP sẽ offline rồi online lại." : `Lỗi ${r.status}: ${detail(r)}`, r.ok ? "ok" : "err");
+});
+
+// ---- gán nhãn: bẩn/sạch ----
+let dirtClasses = { ban: "Bẩn", sach: "Sạch" };
+async function loadDirt() {
+  const r = await api("GET", "/dataset/ban_sach");
+  if (!r.ok) return say("#msg-dirt", `Lỗi ${r.status}: ${detail(r)}`, "err");
+  dirtClasses = r.data.classes;
+  $("#dirt-counts").textContent = Object.entries(r.data.counts).map(([c, n]) => `${dirtClasses[c]}: ${n}`).join(" · ");
+  const f = $("#dirt-filter").value, grid = $("#dirt-grid"); grid.replaceChildren();
+  r.data.items.filter((it) => !f || it.cls === f).forEach((it) => {
+    const other = it.cls === "ban" ? "sach" : "ban";
+    grid.append(el("div", { class: "tile" },
+      el("img", { src: `/dataset/ban_sach/${it.id}/image`, alt: it.id, loading: "lazy" }),
+      el("div", { class: "row" },
+        el("span", { class: "state " + (it.cls === "ban" ? "AWAITING_CHOICE" : "WASHING"), text: dirtClasses[it.cls] }),
+        el("button", { class: "b", text: "→ " + dirtClasses[other], onclick: async () => { await api("POST", `/dataset/ban_sach/${it.id}/move?cls=${other}`); loadDirt(); } }),
+        el("button", { class: "b", text: "Xoá", onclick: async () => { if (confirm("Chuyển ảnh này vào _deleted/?")) { await api("DELETE", `/dataset/ban_sach/${it.id}`); loadDirt(); } } }))));
+  });
+  if (!r.data.items.length) grid.append(el("div", { class: "muted", text: "Chưa có ảnh." }));
+}
+$("#dirt-filter").addEventListener("change", loadDirt);
+$("#btn-dirt-up").addEventListener("click", async () => {
+  const files = [...$("#dirt-files").files], cls = $("#dirt-cls").value;
+  if (!files.length) return say("#msg-dirt", "Chọn ảnh trước.", "err");
+  let ok = 0, errs = [];
+  for (const f of files) {
+    const r = await api("POST", `/dataset/ban_sach?cls=${cls}`, f);
+    if (r.ok) ok++; else errs.push(`${f.name}: ${detail(r)}`);
+  }
+  say("#msg-dirt", `Đã thêm ${ok}/${files.length} ảnh vào "${dirtClasses[cls]}".` + (errs.length ? "\n" + errs.join("\n") : ""), errs.length ? "err" : "ok");
+  $("#dirt-files").value = ""; loadDirt();
+});
+
+// ---- gán nhãn: biển số ----
+async function loadPlates() {
+  const r = await api("GET", "/dataset/bien_so");
+  if (!r.ok) return say("#msg-plate", `Lỗi ${r.status}: ${detail(r)}`, "err");
+  $("#plate-count").textContent = `${r.data.items.length} ảnh`;
+  const grid = $("#plate-grid"); grid.replaceChildren();
+  r.data.items.forEach((it) => {
+    const inp = el("input", { type: "text", maxlength: "15" }); inp.value = it.text;
+    grid.append(el("div", { class: "tile" },
+      el("img", { src: `/dataset/bien_so/${it.id}/image`, alt: it.id, loading: "lazy" }), inp,
+      el("div", { class: "row" },
+        el("button", { class: "b", text: "Lưu", onclick: async () => {
+          const s = await api("PUT", `/dataset/bien_so/${it.id}?text=${encodeURIComponent(inp.value)}`);
+          say("#msg-plate", s.ok ? `Đã lưu ${s.data.text}` : `Lỗi ${s.status}: ${detail(s)}`, s.ok ? "ok" : "err"); loadPlates(); } }),
+        el("button", { class: "b", text: "Xoá", onclick: async () => { if (confirm("Chuyển ảnh này vào _deleted/?")) { await api("DELETE", `/dataset/bien_so/${it.id}`); loadPlates(); } } }))));
+  });
+  if (!r.data.items.length) grid.append(el("div", { class: "muted", text: "Chưa có ảnh." }));
+}
+$("#btn-plate-up").addEventListener("click", async () => {
+  const f = $("#plate-file").files[0], text = $("#plate-text").value.trim();
+  if (!f || !text) return say("#msg-plate", "Chọn ảnh cắt biển và gõ chữ biển đúng.", "err");
+  const r = await api("POST", `/dataset/bien_so?text=${encodeURIComponent(text)}`, f);
+  say("#msg-plate", r.ok ? "Đã thêm." : `Lỗi ${r.status}: ${detail(r)}`, r.ok ? "ok" : "err");
+  if (r.ok) { $("#plate-file").value = ""; $("#plate-text").value = ""; }
+  loadPlates();
+});
+
+// ---- khởi động ----
+(async () => {
+  const r = await api("GET", "/ui/config");
+  if (r.ok) cfg = r.data;
+  $("#mode").textContent = cfg.ai_mode === "real" ? "AI thật" : "AI giả lập";
+  document.querySelectorAll(".real-only").forEach((e) => e.classList.toggle("hidden", cfg.ai_mode !== "real"));
+  $("#plate").placeholder = cfg.ai_mode === "real" ? "Biển số (trống = AI đọc)" : "Biển số (giả lập)";
+  snapLoop("cam1"); snapLoop("cam2");
+  poll(); setInterval(() => { if (!document.hidden) poll(); }, 1000);
+})();
+</script>
+</body>
+</html>

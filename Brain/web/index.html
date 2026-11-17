@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trạm kiểm tra xe thông minh</title>
+<link rel="preload" href="fonts/be-vietnam-pro-vietnamese-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="brand-mark"><span class="ico i-car"></span></span>
+    <h1>SMARTPK<small>Trạm kiểm tra xe</small></h1>
+  </div>
+  <nav role="tablist" id="tabs">
+    <span class="tab-ind" id="tab-ind" aria-hidden="true"></span>
+    <button role="tab" data-tab="tram" aria-selected="true">Trạm</button>
+    <button role="tab" data-tab="baocao">Báo cáo</button>
+    <button role="tab" data-tab="data">Dữ liệu &amp; Huấn luyện</button>
+    <button role="tab" data-tab="caidat">Cài đặt</button>
+    <button role="tab" data-tab="thuanh">Thử ảnh</button>
+  </nav>
+  <span class="pill" id="hdr-esp"><span class="dot"></span><span>ESP32</span></span>
+  <button class="btn ghost icon" id="theme" title="Đổi giao diện sáng / tối" aria-label="Đổi giao diện sáng / tối"><span class="ico i-theme"></span></button>
+</header>
+<main>
+  <section id="tab-tram">
+    <div class="grid">
+      <div>
+        <div class="card">
+          <div class="video-wrap" data-state="CHO_XE">
+            <img class="video" id="vid-overview" alt="Camera tổng quan">
+            <div class="scan" aria-hidden="true"></div>
+            <div class="vf" aria-hidden="true"></div>
+            <div class="video-msg" id="vid-msg" hidden></div>
+            <span class="live" aria-hidden="true">LIVE</span>
+          </div>
+          <div class="video-wrap" id="wrap-inspect" data-state="CHO_XE" hidden style="margin-top:12px">
+            <img class="video" id="vid-inspect" alt="Camera kiểm tra cận cảnh">
+            <div class="scan" aria-hidden="true"></div>
+            <div class="vf" aria-hidden="true"></div>
+          </div>
+          <div class="status">
+            <div class="ring" id="prog" role="progressbar" aria-label="Tiến độ quét" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="prog-pct">0%</span></div>
+            <div class="rail-box">
+              <span class="chip CHO_XE" id="chip" aria-live="polite">Chờ xe</span>
+              <ol class="rail" id="rail">
+                <li data-s="CHO_XE">Chờ xe</li><li data-s="XE_VAO">Xe vào</li><li data-s="DANG_QUET">Đang quét</li><li data-s="CO_KET_QUA">Có kết quả</li>
+              </ol>
+            </div>
+            <div class="cam-ctl">
+              <span class="ico i-cam muted"></span>
+              <select id="cam-pick" title="Chọn camera" aria-label="Chọn camera"></select>
+              <button class="btn ghost icon" id="cam-refresh" title="Dò lại camera" aria-label="Dò lại camera"><span class="ico i-refresh"></span></button>
+              <span class="muted" id="cam-active"></span>
+            </div>
+          </div>
+          <div class="strip" id="strip"></div>
+        </div>
+        <div class="card"><h2>Sự kiện gần đây</h2><div class="log" id="log"></div></div>
+      </div>
+      <div class="card" id="result"><h2>Kết quả kiểm tra</h2></div>
+    </div>
+  </section>
+
+  <section id="tab-baocao" hidden>
+    <div class="grid">
+      <div class="card"><h2>Lịch sử kiểm tra</h2><table><thead><tr><th>#</th><th>Giờ</th><th>Biển số</th><th>Chủ xe</th><th>Nhân viên?</th></tr></thead><tbody id="rep-list"></tbody></table><p class="muted" id="rep-empty" hidden>Chưa có báo cáo nào.</p></div>
+      <div class="card" id="rep-detail"><h2>Chi tiết</h2><p class="muted">Chọn một báo cáo bên trái.</p></div>
+    </div>
+  </section>
+
+  <section id="tab-data" hidden>
+    <div class="card">
+      <h2>Dữ liệu hư hỏng (dataset_hu_hong)</h2>
+      <div class="stat" id="ds-stat"></div>
+      <div class="row" style="margin-top:16px">
+        <button class="btn" id="ds-capture"><span class="ico i-cam"></span>Chụp xe để gán nhãn</button>
+        <a class="btn" href="/label.html" target="_blank" rel="noopener">Gán nhãn hư hỏng</a>
+        <a class="btn ghost" href="/api/dataset/zip" download>Tải dataset (.zip)</a>
+        <span class="muted">Chụp lưu ảnh gốc + tự dò khung xe vào dataset_hu_hong/raw; mở trang gán nhãn để vẽ khung hư hỏng.</span>
+      </div>
+      <p class="muted" id="ds-note"></p>
+    </div>
+    <div class="card"><h2>Mô hình đang dùng</h2><table><tbody id="models"></tbody></table></div>
+  </section>
+
+  <section id="tab-caidat" hidden>
+    <div class="card">
+      <h2>Camera và ngưỡng</h2>
+      <div class="form" id="cfg-form"></div>
+      <div class="row" style="margin-top:16px"><button class="btn" id="cfg-save">Lưu cài đặt</button><span class="muted">Đổi nguồn camera chỉ có hiệu lực sau khi chạy lại chương trình.</span></div>
+    </div>
+    <div class="card">
+      <h2>Cổng ESP32 (UART)</h2>
+      <div class="row"><select id="port" aria-label="Cổng COM"></select><button class="btn ghost" id="port-refresh"><span class="ico i-refresh"></span>Quét lại</button><button class="btn" id="port-connect">Kết nối</button></div>
+      <div class="row" style="margin-top:12px"><button class="btn ghost" id="servo-open">Mở cổng 5 s</button><button class="btn ghost" id="servo-sweep">Test servo 0°-90°-180°</button><span class="muted">Servo GPIO13. Test quét mất ~8 s; không thấy servo chạy → xem Nhật ký.</span></div>
+    </div>
+    <div class="card">
+      <h2>Chủ xe</h2>
+      <div class="form"><label class="f">Biển số<input id="o-plate" placeholder="51F-123.45"></label><label class="f">Tên<input id="o-name"></label><label class="f">Điện thoại<input id="o-phone"></label><button class="btn" id="o-save">Thêm / sửa</button></div>
+      <table style="margin-top:14px"><thead><tr><th>Biển số</th><th>Tên</th><th>Điện thoại</th><th></th></tr></thead><tbody id="owners"></tbody></table>
+    </div>
+  </section>
+
+  <section id="tab-thuanh" hidden>
+    <div class="card">
+      <h2>Thử trên một ảnh</h2>
+      <div class="drop" id="drop" role="button" tabindex="0"><span class="ico i-upload"></span><span>Kéo thả ảnh vào đây hoặc bấm để chọn</span><input type="file" id="file" accept="image/*" hidden></div>
+    </div>
+    <div class="grid" id="test-out" hidden style="margin-top:16px">
+      <div class="card"><img class="video" id="test-img" alt="Ảnh đã nhận diện" style="aspect-ratio:auto"></div>
+      <div class="card" id="test-result"></div>
+    </div>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
